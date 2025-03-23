@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "755816760602",
+    "project_id": "dham-1111",
+    "storage_bucket": "dham-1111.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:755816760602:android:bec67eee8cb44bd0ed58a3",
+        "android_client_info": {
+          "package_name": "com.example.authtest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdUjOQ4vEmlPawVlsdZ_hLePu968SgCa8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
