@@ -1,183 +1,125 @@
-// ignore_for_file: use_build_context_synchronously
+import 'dart:async';
 
-import 'package:authtest/firebase_options.dart';
+import 'package:authtest/auth_screen.dart';
+import 'package:authtest/auth_service.dart';
+import 'package:authtest/home_screen.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-    appleProvider: AppleProvider.deviceCheck,
-  );
-  runApp(const MainApp());
+import 'firebase_options.dart';
+
+void main() {
+  runZonedGuarded(_appRunner, onError);
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final youPhone = FirebaseAuth.instance.currentUser?.phoneNumber;
-    return const MaterialApp(
-      home: HomeScreen(),
+Future<void> _appRunner() async {
+  try {
+    runApp(const LoadingApp());
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.debug,
     );
+    await FirebaseAuth.instance.setSettings(forceRecaptchaFlow: true);
+    runApp(const AuthScope(child: MyApp()));
+  } on Object catch (e, s) {
+    debugPrint('$e\n$s');
+    runApp(ErrorApp(error: e));
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
+void onError(Object error, StackTrace stackTrace) {
+  debugPrint('$error\n$stackTrace');
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final youPhone = FirebaseAuth.instance.currentUser?.phoneNumber;
+/// {@template LoadingApp.class}
+/// LoadingApp widget.
+/// {@endtemplate}
+class LoadingApp extends StatelessWidget {
+  /// {@macro LoadingApp.class}
+  const LoadingApp({super.key});
+
   @override
-  Widget build(BuildContext context) {
-    return youPhone == null 
-      ? const AuthScreen()
-      : Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(youPhone ?? "phone"),
-              const SizedBox(height: 30,),
-              TextButton(
-                onPressed:() async {
-                  await FirebaseAuth.instance.signOut();
-                  _goToScreenReplaceAll(context, const AuthScreen());
-                }, 
-                child: const Text('SIGN OUT')
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => MaterialApp(
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: const Material(
+          color: Colors.white,
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
-  }
 }
 
-void _showError(BuildContext context, Object e) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), style: const TextStyle(color: Colors.white),)));
-}
+/// {@template ErrorApp.class}
+/// ErrorApp widget.
+/// {@endtemplate}
+class ErrorApp extends StatelessWidget {
+  /// {@macro ErrorApp.class}
+  const ErrorApp({super.key, required this.error});
 
-void _goToScreen(BuildContext context, Widget screen) {
-  Navigator.of(context).push(MaterialPageRoute(builder:(context) => screen));
-}
-
-void _goToScreenReplaceAll(BuildContext context, Widget screen) {
-  Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder:(context) => screen), (_) => false);
-}
-
-class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  final Object error;
 
   @override
-  State<AuthScreen> createState() => _AuthScreenState();
+  Widget build(BuildContext context) => MaterialApp(
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: Material(
+          color: Colors.white,
+          child: Center(child: Text('$error')),
+        ),
+      );
 }
 
-class _AuthScreenState extends State<AuthScreen> {
-  final controller = TextEditingController();
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
-  void _onSendCode() async {
-    try {
-      final phone = controller.text;
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) {},
-        verificationFailed: (FirebaseAuthException e) {
-          _showError(context, e.message ?? "error");
-        },
-        codeSent: (verificationId, forceResendingToken) {
-          _goToScreen(context, VerifyScreen(verifyId: verificationId));
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          _showError(context, "TIMEOUT");
-        },
-      );
-    } catch (e) {
-      _showError(context, e);
-    }
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final GlobalKey<NavigatorState> _navigatorKey;
+  AuthService? _authService;
+
+  @override
+  void initState() {
+    super.initState();
+    _navigatorKey = GlobalKey<NavigatorState>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _authService = AuthScope.of(context)..addListener(_authListener);
+    });
+  }
+
+  @override
+  void dispose() {
+    _authService?.removeListener(_authListener);
+    super.dispose();
+  }
+
+  void _authListener() {
+    final isAuthenticated = AuthScope.of(context).value != null;
+    final nextScreen = isAuthenticated ? const HomeScreen() : const AuthScreen();
+    _navigatorKey.currentState?.pushReplacement(MaterialPageRoute(builder: (context) => nextScreen));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextFormField(
-                controller: controller,
-              ),
-              const SizedBox(height: 30,),
-              TextButton(
-                onPressed: _onSendCode, 
-                child: const Text('NEXT')
-              ),
-            ],
-          ),
-        ),
+    return MaterialApp(
+      navigatorKey: _navigatorKey,
+      title: 'Flutter Demo',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
+      home: AuthScope.of(context).value == null ? const AuthScreen() : const HomeScreen(),
     );
   }
 }
 
-class VerifyScreen extends StatefulWidget {
-  const VerifyScreen({super.key, required this.verifyId,});
-  final String verifyId;
-
-  @override
-  State<VerifyScreen> createState() => _VerifyScreenState();
-}
-
-class _VerifyScreenState extends State<VerifyScreen> {
-
-  final controller = TextEditingController();
-
-  void _onVerify() async {
-    try {
-      final code = controller.text;
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: widget.verifyId, 
-        smsCode: code,
-      );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      _goToScreenReplaceAll(context, const HomeScreen());
-    } catch (e) {
-      _showError(context, e);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextFormField(
-                controller: controller,
-              ),
-              const SizedBox(height: 30,),
-              TextButton(
-                onPressed: _onVerify, 
-                child: const Text('VERIFY')
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// 5d287eb5-0a5e-42ec-966a-dc1e7221ae1e
